@@ -36,9 +36,12 @@ kospi-dashboard/
 - 나머지 차트: Chart.js 4.4.1
 
 ## 데이터 수집 방식
-- Anthropic API (claude-sonnet-4-6) + web_search 도구
-- API 실패 시 makeFallback() 함수의 세그먼트 데이터 사용
-- KOSPI 실제 수준: 2025.07 ~3,079 → 2026.07.30 ~5,593
+- 매일 KST 07:00에 `update.py`가 공개 시장 데이터를 수집
+- KOSPI·S&P 500·VIX: Yahoo Finance 공개 차트 데이터
+- Fear & Greed: CNN 공식 페이지와 JSON 데이터
+- 실제 KOSPI OHLC로 이동평균과 50일 이격도 계산
+- 검증 실패 시 더미 데이터를 생성하지 않고 워크플로를 실패 처리
+- 무료 최신 자료가 없는 Put/Call·AAII는 `N/A` 표시
 
 ## update.py 수정 시 주의사항
 - HTML 파일 직접 정규식으로 업데이트
@@ -48,5 +51,5 @@ kospi-dashboard/
 
 ## GitHub Actions
 - 실행 시각: UTC 22:00 = KST 07:00
-- 필요 Secret: ANTHROPIC_API_KEY
+- 별도 API Secret 불필요
 - 배포: GitHub Pages (main 브랜치 루트)

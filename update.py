@@ -1,127 +1,103 @@
-"""
-KOSPI 대시보드 자동 업데이트
-GitHub Actions에서 매일 KST 07:00 실행
-"""
-import os, re, json, datetime, requests
+"""Fetch verified public market data for the static dashboard."""
+from __future__ import annotations
 
-ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-HTML_FILE     = "index.html"
-KST           = datetime.timezone(datetime.timedelta(hours=9))
-TODAY         = datetime.datetime.now(KST)
-TODAY_STR     = TODAY.strftime("%Y-%m-%d")
-TODAY_KR      = TODAY.strftime("%Y년 %m월 %d일")
+import datetime as dt
+import json
+import urllib.parse
+from pathlib import Path
 
-def fetch_data():
-    print(f"[1] 데이터 수집 ({TODAY_STR})")
-    if not ANTHROPIC_KEY:
-        print("  ANTHROPIC_API_KEY 없음 → 더미 데이터")
-        return dummy()
+import requests
 
-    prompt = f"""오늘 {TODAY_STR} 기준 데이터를 웹검색해서 JSON만 반환해줘.
-마크다운 없이 순수 JSON만 출력:
-{{
-  "kospi":{{"date":"{TODAY_STR}","open":0,"high":0,"low":0,"close":0,"change_pct":0.0}},
-  "vix":0.0, "fear_greed":0, "put_call_ratio":0.0,
-  "sp500_breadth":0.0, "kospi_breadth":0.0,
-  "aaii_bull":0, "aaii_neutral":0, "aaii_bear":0
-}}
-검색 항목: KOSPI 종가 {TODAY_STR}, VIX index today,
-CNN Fear Greed Index today, CBOE Put Call Ratio today,
-AAII investor sentiment survey latest"""
+ROOT = Path(__file__).resolve().parent
+OUTPUT = ROOT / "market-data.js"
+KST = dt.timezone(dt.timedelta(hours=9))
+UA = "Mozilla/5.0"
+SESSION = requests.Session()
+SESSION.headers.update({"User-Agent": UA})
 
-    try:
-        r = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={"Content-Type":"application/json",
-                     "x-api-key":ANTHROPIC_KEY,
-                     "anthropic-version":"2023-06-01"},
-            json={"model":"claude-sonnet-4-6","max_tokens":1024,
-                  "tools":[{"type":"web_search_20250305","name":"web_search"}],
-                  "messages":[{"role":"user","content":prompt}]},
-            timeout=90
-        )
-        r.raise_for_status()
-        texts = [b["text"] for b in r.json().get("content",[]) if b.get("type")=="text"]
-        raw   = re.sub(r"```\w*","","\n".join(texts)).strip()
-        m     = re.search(r"\{[\s\S]*\}", raw)
-        if not m: raise ValueError("JSON 없음")
-        d = json.loads(m.group())
-        k = d["kospi"]
-        s = "▲" if k["change_pct"]>=0 else "▼"
-        print(f"  ✓ KOSPI {k['close']:,.0f} ({s}{k['change_pct']:+.2f}%)")
-        print(f"    VIX {d['vix']} | F&G {d['fear_greed']} | P/C {d['put_call_ratio']}")
-        return d
-    except Exception as e:
-        print(f"  ✗ 실패({e}) → 더미 데이터")
-        return dummy()
 
-def dummy():
+def get(url: str, headers: dict[str, str] | None = None) -> bytes:
+    response = SESSION.get(url, headers=headers, timeout=45)
+    response.raise_for_status()
+    return response.content
+
+
+def yahoo(symbol: str, range_: str = "1y") -> list[dict]:
+    symbol = urllib.parse.quote(symbol, safe="")
+    url = f"https://query2.finance.yahoo.com/v8/finance/chart/{symbol}?range={range_}&interval=1d"
+    result = json.loads(get(url))["chart"]["result"][0]
+    quote = result["indicators"]["quote"][0]
+    rows = []
+    for i, timestamp in enumerate(result["timestamp"]):
+        values = {key: quote[key][i] for key in ("open", "high", "low", "close")}
+        if any(value is None for value in values.values()):
+            continue
+        rows.append({"date": dt.datetime.fromtimestamp(timestamp, dt.timezone.utc).date().isoformat(),
+                     **{key: round(value, 2) for key, value in values.items()}})
+    if len(rows) < 50:
+        raise RuntimeError(f"insufficient data: {len(rows)} rows")
+    return rows
+
+
+def cnn_fear_greed() -> dict:
+    page = "https://www.cnn.com/markets/fear-and-greed"
+    session = requests.Session()
+    session.headers.update({"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36"})
+    page_response = session.get(page, timeout=45)
+    page_response.raise_for_status()
+    url = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
+    response = session.get(url, headers={"Referer": page}, timeout=45)
+    response.raise_for_status()
+    item = response.json()["fear_and_greed"]
+    return {"value": round(float(item["score"]), 1), "rating": item["rating"],
+            "as_of": item["timestamp"], "source": page}
+
+
+def monthly_last(rows: list[dict], count: int = 6) -> list[dict]:
+    months = {row["date"][:7]: row for row in rows}
+    return [{"date": key, "value": months[key]["close"]} for key in sorted(months)[-count:]]
+
+
+def high_gap(rows: list[dict], count: int = 24) -> list[dict]:
+    points = []
+    for i, row in enumerate(rows):
+        high = max(item["high"] for item in rows[max(0, i - 251):i + 1])
+        points.append({"date": row["date"], "close": round((row["close"] / high - 1) * 100, 1)})
+    return monthly_last(points, count)
+
+
+def build() -> dict:
+    kospi, sp500, vix = yahoo("^KS11"), yahoo("^GSPC"), yahoo("^VIX", "6mo")
+    latest, previous = kospi[-1], kospi[-2]
+    ma50 = sum(row["close"] for row in kospi[-50:]) / 50
     return {
-        "kospi":{"date":TODAY_STR,"open":5620,"high":5700,
-                 "low":5550,"close":5593,"change_pct":-1.23},
-        "vix":20.7,"fear_greed":68,"put_call_ratio":0.65,
-        "sp500_breadth":-13.0,"kospi_breadth":-16.2,
-        "aaii_bull":52,"aaii_neutral":24,"aaii_bear":24
+        "schema_version": 1, "generated_at": dt.datetime.now(KST).isoformat(timespec="seconds"),
+        "status": "verified-public-sources",
+        "kospi": {**latest, "as_of": latest["date"],
+                  "change_pct": round((latest["close"] / previous["close"] - 1) * 100, 2),
+                  "disparity_50": round(latest["close"] / ma50 * 100, 1), "candles": kospi,
+                  "high_gap": high_gap(kospi),
+                  "source": "https://finance.yahoo.com/quote/%5EKS11/history/"},
+        "sp500": {"as_of": sp500[-1]["date"], "high_gap": high_gap(sp500),
+                  "source": "https://finance.yahoo.com/quote/%5EGSPC/history/"},
+        "vix": {"as_of": vix[-1]["date"], "value": vix[-1]["close"],
+                "monthly": monthly_last(vix), "source": "https://finance.yahoo.com/quote/%5EVIX/history/"},
+        "fear_greed": cnn_fear_greed(),
+        "put_call": {"value": None, "as_of": None, "note": "Cboe 무료 최신 시계열 미제공",
+                     "source": "https://www.cboe.com/us/options/market_statistics/"},
+        "aaii": {"bull": None, "neutral": None, "bear": None, "as_of": None,
+                 "note": "AAII 최신 설문은 구독 데이터", "source": "https://www.aaii.com/sentimentsurvey"},
     }
 
-def kpi(html, label, val, sub):
-    html = re.sub(
-        rf'(<div class="kpi-label">{re.escape(label)}</div>\s*<div class="kpi-value [^"]*">)[^<]*(</div>)',
-        rf'\g<1>{val}\g<2>', html)
-    html = re.sub(
-        rf'({re.escape(label)}.*?kpi-sub">)[^<]*(</div>)',
-        rf'\g<1>{sub}\g<2>', html, flags=re.DOTALL)
-    return html
 
-def update_html(d):
-    print("[2] HTML 업데이트")
-    html = open(HTML_FILE, encoding="utf-8").read()
-    k    = d["kospi"]
-    s    = "▲" if k["change_pct"]>=0 else "▼"
-    fg   = d["fear_greed"]
-    zone = "극탐욕" if fg>=75 else "탐욕" if fg>=55 else "중립" if fg>=45 else "공포"
+def validate(data: dict) -> None:
+    if not 100 <= data["kospi"]["close"] <= 20000: raise ValueError("invalid KOSPI")
+    if not 0 < data["vix"]["value"] < 150: raise ValueError("invalid VIX")
+    if not 0 <= data["fear_greed"]["value"] <= 100: raise ValueError("invalid Fear & Greed")
 
-    # 타임스탬프 고정
-    html = re.sub(r'(ts\.textContent=)[^;]*(;)',
-                  f'\\1"{TODAY_KR} 07:00 자동업데이트"\\2', html)
-
-    # Alert 배너
-    alert = (f'KOSPI {TODAY_KR}: <strong>{k["close"]:,.0f}</strong>'
-             f' ({s}{k["change_pct"]:+.2f}%) &nbsp;—&nbsp;'
-             f'VIX <strong>{d["vix"]}</strong> &nbsp;—&nbsp;'
-             f'F&amp;G <strong>{fg}({zone})</strong>')
-    html = re.sub(r'(<div class="alert-dot"></div>\s*<span)[^<]*(</span>)',
-                  f'\\g<1>{alert}\\g<2>', html, flags=re.DOTALL)
-
-    # KPI 카드
-    html = kpi(html, "KOSPI 현재가",
-               f"{k['close']:,.0f}", f"{s}{k['change_pct']:+.2f}% ({TODAY_STR})")
-    html = kpi(html, "KOSPI Breadth",
-               f"{d['kospi_breadth']:+.1f}%", "쏠림 유지 = 랠리 에너지 잔존")
-    html = kpi(html, "Fear &amp; Greed",
-               str(fg), f"{zone} 구간 (75↑ 위험)")
-    html = kpi(html, "VIX 변동성",
-               str(d["vix"]), "30↑ 공포 / 20~30 경계 / 20↓ 안정")
-    html = kpi(html, "P/C Ratio",
-               str(d["put_call_ratio"]), "1↑ 공포 / 0.7↓ 낙관과잉")
-
-    # 오늘 OHLC 캔들 추가
-    ohlc = (f'\n      {{s:{k["open"]},e:{k["close"]},'
-            f'n:1,v:0.010}},  // {TODAY_STR} 자동업데이트')
-    html = re.sub(
-        r'\s*\{s:\d+,e:\d+,n:1,v:0\.010\},\s*// \d{4}-\d{2}-\d{2} 자동업데이트',
-        '', html)
-    html = re.sub(r'(    \];\s*const out=\[\];)',
-                  f'\n{ohlc}\n\\1', html)
-
-    open(HTML_FILE,"w",encoding="utf-8").write(html)
-    print(f"  ✓ 저장 완료")
 
 if __name__ == "__main__":
-    print("="*50)
-    print(f"KOSPI 대시보드 자동업데이트 ({TODAY_KR})")
-    print("="*50)
-    data = fetch_data()
-    update_html(data)
-    print("="*50)
-    print("완료!")
+    data = build(); validate(data)
+    OUTPUT.write_text("window.MARKET_DATA=" + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + ";\n", encoding="utf-8")
+    print(json.dumps({"generated_at": data["generated_at"], "kospi": data["kospi"]["close"],
+                      "vix": data["vix"]["value"], "fear_greed": data["fear_greed"]["value"]}, ensure_ascii=False))

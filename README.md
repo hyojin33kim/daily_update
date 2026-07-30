@@ -4,7 +4,10 @@
 
 ## 자동화
 - **매일 KST 07:00** GitHub Actions 자동 실행
-- Anthropic API 웹검색으로 실시간 데이터 수집
+- 매일 아침 직전 거래일 공개 시장 데이터 수집
+- KOSPI·S&P 500·VIX: Yahoo Finance 공개 차트 데이터
+- Fear & Greed: CNN 공식 지표
+- 검증 가능한 최신 무료 자료가 없는 항목은 `N/A` 표시
 - GitHub Pages 자동 배포
 
 ## 주요 지표
