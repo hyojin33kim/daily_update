@@ -6,6 +6,7 @@ import json
 import re
 import urllib.parse
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 
@@ -67,24 +68,48 @@ def high_gap(rows: list[dict], count: int = 24) -> list[dict]:
     return monthly_last(points, count)
 
 
-def cboe_put_call_history(points: int = 15) -> list[dict]:
-    """Fetch recent official Cboe Equity Put/Call ratios by trading date."""
-    rows = []
-    day = dt.datetime.now(KST).date() - dt.timedelta(days=1)
-    attempts = 0
-    while len(rows) < points and attempts < 35:
-        attempts += 1
-        if day.weekday() < 5:
-            url = f"https://www.cboe.com/markets/us/options/market-statistics/daily?dt={day.isoformat()}"
-            response = SESSION.get(url, timeout=45)
-            if response.ok:
-                match = re.search(r'EQUITY PUT/CALL RATIO[^0-9]{1,40}([0-9]+\.[0-9]+)', response.text)
-                if match:
-                    rows.append({"date": day.isoformat(), "value": float(match.group(1))})
-        day -= dt.timedelta(days=1)
-    rows.reverse()
-    if len(rows) < 5:
-        raise RuntimeError(f"insufficient Cboe Put/Call rows: {len(rows)}")
+def existing_put_call() -> dict[str, float]:
+    if not OUTPUT.exists():
+        return {}
+    match = re.match(r"window\.MARKET_DATA=(.*);\s*$", OUTPUT.read_text(encoding="utf-8"))
+    if not match:
+        return {}
+    try:
+        rows = json.loads(match.group(1)).get("put_call", {}).get("daily", [])
+        return {row["date"]: float(row["value"]) for row in rows}
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return {}
+
+
+def fetch_cboe_ratio(day: dt.date) -> tuple[str, float] | None:
+    url = f"https://www.cboe.com/markets/us/options/market-statistics/daily?dt={day.isoformat()}"
+    response = requests.get(url, headers={"User-Agent": UA}, timeout=45)
+    if not response.ok:
+        return None
+    match = re.search(r'EQUITY PUT/CALL RATIO[^0-9]{1,40}([0-9]+\.[0-9]+)', response.text)
+    return (day.isoformat(), float(match.group(1))) if match else None
+
+
+def cboe_put_call_history() -> list[dict]:
+    """Maintain six calendar months of official daily Cboe Equity P/C data."""
+    end = dt.datetime.now(KST).date() - dt.timedelta(days=1)
+    start = end - dt.timedelta(days=183)
+    values = {date: value for date, value in existing_put_call().items() if date >= start.isoformat()}
+    missing = []
+    day = start
+    while day <= end:
+        if day.weekday() < 5 and day.isoformat() not in values:
+            missing.append(day)
+        day += dt.timedelta(days=1)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(fetch_cboe_ratio, day) for day in missing]
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                values[result[0]] = result[1]
+    rows = [{"date": date, "value": values[date]} for date in sorted(values)]
+    if len(rows) < 80:
+        raise RuntimeError(f"insufficient six-month Cboe Put/Call rows: {len(rows)}")
     return rows
 
 
@@ -104,7 +129,7 @@ def build() -> dict:
         "sp500": {"as_of": sp500[-1]["date"], "high_gap": high_gap(sp500),
                   "source": "https://finance.yahoo.com/quote/%5EGSPC/history/"},
         "vix": {"as_of": vix[-1]["date"], "value": vix[-1]["close"],
-                "daily": [{"date": row["date"], "value": row["close"]} for row in vix[-30:]],
+                "daily": [{"date": row["date"], "value": row["close"]} for row in vix],
                 "source": "https://finance.yahoo.com/quote/%5EVIX/history/"},
         "fear_greed": cnn_fear_greed(),
         "put_call": {"value": put_call[-1]["value"], "as_of": put_call[-1]["date"],

@@ -8,7 +8,7 @@
 - KOSPI·S&P 500·VIX: Yahoo Finance 공개 차트 데이터
 - Fear & Greed: CNN 공식 지표
 - Equity Put/Call Ratio: Cboe 날짜별 Daily Market Statistics
-- VIX와 Put/Call 차트는 최근 거래일별 시계열 표시
+- VIX와 Put/Call 차트는 최근 6개월 거래일별 시계열 표시
 - GitHub Pages 자동 배포
 
 ## 주요 지표

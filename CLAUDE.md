@@ -40,7 +40,8 @@ kospi-dashboard/
 - KOSPI·S&P 500·VIX: Yahoo Finance 공개 차트 데이터
 - Fear & Greed: CNN 공식 페이지와 JSON 데이터
 - Equity Put/Call Ratio: Cboe Daily Market Statistics 날짜별 자료
-- VIX·Put/Call 차트는 월별 집계 없이 거래일별 표시
+- VIX·Put/Call 차트는 최근 6개월을 월별 집계 없이 거래일별 표시
+- Put/Call 이력은 기존 `market-data.js`에 누적하고 새 거래일만 추가 수집
 - 실제 KOSPI OHLC로 이동평균과 50일 이격도 계산
 - 검증 실패 시 더미 데이터를 생성하지 않고 워크플로를 실패 처리
 - 무료 최신 자료가 없는 AAII는 `N/A` 표시
