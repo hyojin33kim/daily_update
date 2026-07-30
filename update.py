@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 
 ROOT = Path(__file__).resolve().parent
-OUTPUT = ROOT / "market-data.js"
+OUTPUT = ROOT / "market-data-history-6m.js"
 KST = dt.timezone(dt.timedelta(hours=9))
 UA = "Mozilla/5.0"
 SESSION = requests.Session()

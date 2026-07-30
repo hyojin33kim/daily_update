@@ -36,7 +36,7 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add market-data.js
+          git add market-data-history-6m.js
           git diff --staged --quiet || \
             git commit -m "자동업데이트 $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M KST')"
           git push
