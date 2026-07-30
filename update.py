@@ -47,12 +47,20 @@ def cnn_fear_greed() -> dict:
     session.headers.update({"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36"})
     page_response = session.get(page, timeout=45)
     page_response.raise_for_status()
-    url = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
+    start = dt.datetime.now(KST).date() - dt.timedelta(days=183)
+    url = f"https://production.dataviz.cnn.io/index/fearandgreed/graphdata/{start.isoformat()}"
     response = session.get(url, headers={"Referer": page}, timeout=45)
     response.raise_for_status()
-    item = response.json()["fear_and_greed"]
+    payload = response.json()
+    item = payload["fear_and_greed"]
+    history = payload["fear_and_greed_historical"]["data"]
+    daily = [{"date": dt.datetime.fromtimestamp(row["x"] / 1000, dt.timezone.utc).date().isoformat(),
+              "value": round(float(row["y"]), 1), "rating": row["rating"]}
+             for row in history if row.get("x") is not None and row.get("y") is not None]
+    if len(daily) < 80:
+        raise RuntimeError(f"insufficient six-month CNN Fear & Greed rows: {len(daily)}")
     return {"value": round(float(item["score"]), 1), "rating": item["rating"],
-            "as_of": item["timestamp"], "source": page}
+            "as_of": item["timestamp"], "daily": daily, "source": page}
 
 
 def monthly_last(rows: list[dict], count: int = 6) -> list[dict]:
@@ -144,6 +152,8 @@ def validate(data: dict) -> None:
     if not 100 <= data["kospi"]["close"] <= 20000: raise ValueError("invalid KOSPI")
     if not 0 < data["vix"]["value"] < 150: raise ValueError("invalid VIX")
     if not 0 <= data["fear_greed"]["value"] <= 100: raise ValueError("invalid Fear & Greed")
+    if any(not 0 <= row["value"] <= 100 for row in data["fear_greed"]["daily"]):
+        raise ValueError("invalid Fear & Greed history")
 
 
 if __name__ == "__main__":

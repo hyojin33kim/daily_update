@@ -377,8 +377,9 @@
   <div class="panel-title">시장 센티먼트 (Sentiment) 지수 <span class="panel-badge">투자심리 종합</span></div>
   <div class="sent-grid">
     <div class="sent-card">
-      <div class="sent-header"><div class="sent-title">① Fear &amp; Greed</div><div class="sent-badge greed">탐욕</div></div>
+      <div class="sent-header"><div class="sent-title">① Fear &amp; Greed · 최근 6개월 일별</div><div class="sent-badge greed">탐욕</div></div>
       <div class="mini-gauge-wrap"><svg id="fgGauge" width="160" height="88" viewBox="0 0 160 88"></svg></div>
+      <div style="position:relative;height:100px;"><canvas id="fgChart"></canvas></div>
       <div class="sent-bar-bg"><div class="sent-bar-fill bar-fg" style="width:73%"></div></div>
       <div class="sent-desc">CNN F&amp;G Index <strong style="color:#dc2626;">73/100</strong>. 75↑ 극도 탐욕 → 역발상 매도 신호 접근.</div>
     </div>
@@ -962,6 +963,14 @@ makeBreadthChart('kospiBreathChart',
   st.setAttribute('x',cx);st.setAttribute('y',cy-5);st.setAttribute('text-anchor','middle');st.setAttribute('font-size','8');st.setAttribute('fill','#6b7280');st.textContent='/100';
   svg.appendChild(st);
 })();
+
+// ── CNN Fear & Greed 최근 6개월 일별
+const baseFgDaily=window.MARKET_DATA.fear_greed.daily;
+new Chart(document.getElementById('fgChart').getContext('2d'),{
+  type:'line',
+  data:{labels:baseFgDaily.map(x=>x.date),datasets:[{data:baseFgDaily.map(x=>x.value),borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,0.08)',borderWidth:2,pointBackgroundColor:'#dc2626',pointRadius:2,fill:true,tension:0.15}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#1e293b',titleColor:'#94a3b8',callbacks:{label:i=>` F&G ${i.parsed.y.toFixed(1)}`}}},scales:{x:{ticks:{autoSkip:true,maxTicksLimit:9,color:'#475569',font:{size:9}}},y:{min:0,max:100,ticks:{color:'#475569',font:{size:9}},grid:{color:'rgba(203,213,225,0.8)'}}}}
+});
 
 // ── VIX 최근 6개월 일별
 const baseVixDaily=window.MARKET_DATA.vix.daily;
