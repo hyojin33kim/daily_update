@@ -383,14 +383,14 @@
       <div class="sent-desc">CNN F&amp;G Index <strong style="color:#dc2626;">73/100</strong>. 75↑ 극도 탐욕 → 역발상 매도 신호 접근.</div>
     </div>
     <div class="sent-card">
-      <div class="sent-header"><div class="sent-title">② VIX 변동성</div><div class="sent-badge neutral">안정</div></div>
-      <div style="position:relative;height:88px;"><canvas id="vixChart"></canvas></div>
+      <div class="sent-header"><div class="sent-title">② VIX 변동성 · 최근 6개월 일별</div><div class="sent-badge neutral">안정</div></div>
+      <div style="position:relative;height:170px;"><canvas id="vixChart"></canvas></div>
       <div class="sent-bar-bg"><div class="sent-bar-fill" style="width:37%;background:linear-gradient(90deg,#22c55e,#f59e0b);"></div></div>
       <div class="sent-desc">현재 <strong style="color:#1d4ed8;">18.4</strong>. 20↓ 안정 / 20~30 경계 / 30↑ 공포. 낮은 VIX = 갑작스러운 급등 리스크.</div>
     </div>
     <div class="sent-card">
-      <div class="sent-header"><div class="sent-title">③ Put/Call Ratio</div><div class="sent-badge caution">낙관과잉</div></div>
-      <div style="position:relative;height:88px;"><canvas id="pcChart"></canvas></div>
+      <div class="sent-header"><div class="sent-title">③ Equity Put/Call · 최근 6개월 일별</div><div class="sent-badge caution">낙관과잉</div></div>
+      <div style="position:relative;height:170px;"><canvas id="pcChart"></canvas></div>
       <div class="sent-bar-bg"><div class="sent-bar-fill" style="width:30%;background:linear-gradient(90deg,#ef4444,#f97316);"></div></div>
       <div class="sent-desc">현재 <strong style="color:#b45309;">0.62</strong>. 1↑ 공포 / 0.7↓ 탐욕. 낙관 과잉 → 단기 조정 가능성.</div>
     </div>
@@ -963,20 +963,22 @@ makeBreadthChart('kospiBreathChart',
   svg.appendChild(st);
 })();
 
-// ── VIX 스파크라인
+// ── VIX 최근 6개월 일별
+const baseVixDaily=window.MARKET_DATA.vix.daily;
 new Chart(document.getElementById('vixChart').getContext('2d'),{
   type:'line',
-  data:{labels:['1월','2월','3월','4월','5월','6월'],datasets:[{data:[22.1,19.4,28.3,21.8,17.2,18.4],borderColor:'#0078d4',borderWidth:2,pointBackgroundColor:ctx=>ctx.raw>=30?'#ef4444':ctx.raw>=20?'#f59e0b':'#22c55e',pointRadius:4,fill:true,backgroundColor:'rgba(0,120,212,0.08)',tension:0.35}]},
+  data:{labels:baseVixDaily.map(x=>x.date),datasets:[{data:baseVixDaily.map(x=>x.value),borderColor:'#0078d4',borderWidth:2,pointBackgroundColor:'#0078d4',pointRadius:2,fill:true,backgroundColor:'rgba(0,120,212,0.08)',tension:0.15}]},
   options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#1e293b',titleColor:'#94a3b8',callbacks:{label:i=>` VIX ${i.parsed.y.toFixed(1)}`}}},
-  scales:{x:{grid:{color:'rgba(203,213,225,0.8)'},ticks:{color:'#475569',font:{size:9}}},y:{min:10,max:35,grid:{color:c=>c.tick.value===20?'rgba(217,119,6,0.5)':c.tick.value===30?'rgba(220,38,38,0.4)':'rgba(203,213,225,0.8)'},ticks:{color:'#475569',font:{size:9}}}}}
+  scales:{x:{grid:{color:'rgba(203,213,225,0.8)'},ticks:{autoSkip:true,maxTicksLimit:9,color:'#475569',font:{size:9}}},y:{grid:{color:c=>c.tick.value===20?'rgba(217,119,6,0.5)':c.tick.value===30?'rgba(220,38,38,0.4)':'rgba(203,213,225,0.8)'},ticks:{color:'#475569',font:{size:9}}}}}
 });
 
-// ── Put/Call 바 차트
+// ── Equity Put/Call 최근 6개월 일별
+const basePcDaily=window.MARKET_DATA.put_call.daily;
 new Chart(document.getElementById('pcChart').getContext('2d'),{
-  type:'bar',
-  data:{labels:['1월','2월','3월','4월','5월','6월'],datasets:[{data:[0.88,0.79,0.95,0.71,0.65,0.62],backgroundColor:ctx=>ctx.raw>=0.9?'rgba(99,102,241,0.7)':ctx.raw>=0.7?'rgba(34,197,94,0.6)':ctx.raw>=0.6?'rgba(245,158,11,0.7)':'rgba(239,68,68,0.7)',borderRadius:3}]},
+  type:'line',
+  data:{labels:basePcDaily.map(x=>x.date),datasets:[{data:basePcDaily.map(x=>x.value),borderColor:'#f97316',backgroundColor:'#f97316',pointRadius:2,tension:0.15}]},
   options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#1e293b',titleColor:'#94a3b8',callbacks:{label:i=>` P/C ${i.parsed.y.toFixed(2)}`}}},
-  scales:{x:{grid:{display:false},ticks:{color:'#475569',font:{size:9}}},y:{min:0.5,max:1.1,grid:{color:'rgba(203,213,225,0.8)'},ticks:{color:'#475569',font:{size:9},callback:v=>v.toFixed(1)}}}}
+  scales:{x:{grid:{display:false},ticks:{autoSkip:true,maxTicksLimit:9,color:'#475569',font:{size:9}}},y:{grid:{color:'rgba(203,213,225,0.8)'},ticks:{color:'#475569',font:{size:9},callback:v=>v.toFixed(1)}}}}
 });
 
 // ── AAII 도넛
@@ -986,6 +988,6 @@ new Chart(document.getElementById('aaiiChart').getContext('2d'),{
   options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{display:false},tooltip:{backgroundColor:'#1e293b',callbacks:{label:i=>` ${i.label}: ${i.parsed}%`}}}}
 });
 </script>
-<script src="dashboard-live.js?v=20260731-3"></script>
+<script src="dashboard-live-6m.js"></script>
 </body>
 </html>
