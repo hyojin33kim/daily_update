@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import urllib.parse
 from pathlib import Path
 
@@ -66,8 +67,30 @@ def high_gap(rows: list[dict], count: int = 24) -> list[dict]:
     return monthly_last(points, count)
 
 
+def cboe_put_call_history(points: int = 15) -> list[dict]:
+    """Fetch recent official Cboe Equity Put/Call ratios by trading date."""
+    rows = []
+    day = dt.datetime.now(KST).date() - dt.timedelta(days=1)
+    attempts = 0
+    while len(rows) < points and attempts < 35:
+        attempts += 1
+        if day.weekday() < 5:
+            url = f"https://www.cboe.com/markets/us/options/market-statistics/daily?dt={day.isoformat()}"
+            response = SESSION.get(url, timeout=45)
+            if response.ok:
+                match = re.search(r'EQUITY PUT/CALL RATIO[^0-9]{1,40}([0-9]+\.[0-9]+)', response.text)
+                if match:
+                    rows.append({"date": day.isoformat(), "value": float(match.group(1))})
+        day -= dt.timedelta(days=1)
+    rows.reverse()
+    if len(rows) < 5:
+        raise RuntimeError(f"insufficient Cboe Put/Call rows: {len(rows)}")
+    return rows
+
+
 def build() -> dict:
     kospi, sp500, vix = yahoo("^KS11"), yahoo("^GSPC"), yahoo("^VIX", "6mo")
+    put_call = cboe_put_call_history()
     latest, previous = kospi[-1], kospi[-2]
     ma50 = sum(row["close"] for row in kospi[-50:]) / 50
     return {
@@ -81,10 +104,12 @@ def build() -> dict:
         "sp500": {"as_of": sp500[-1]["date"], "high_gap": high_gap(sp500),
                   "source": "https://finance.yahoo.com/quote/%5EGSPC/history/"},
         "vix": {"as_of": vix[-1]["date"], "value": vix[-1]["close"],
-                "monthly": monthly_last(vix), "source": "https://finance.yahoo.com/quote/%5EVIX/history/"},
+                "daily": [{"date": row["date"], "value": row["close"]} for row in vix[-30:]],
+                "source": "https://finance.yahoo.com/quote/%5EVIX/history/"},
         "fear_greed": cnn_fear_greed(),
-        "put_call": {"value": None, "as_of": None, "note": "Cboe 무료 최신 시계열 미제공",
-                     "source": "https://www.cboe.com/us/options/market_statistics/"},
+        "put_call": {"value": put_call[-1]["value"], "as_of": put_call[-1]["date"],
+                     "daily": put_call, "kind": "Equity Put/Call Ratio",
+                     "source": "https://www.cboe.com/markets/us/options/market-statistics/daily"},
         "aaii": {"bull": None, "neutral": None, "bear": None, "as_of": None,
                  "note": "AAII 최신 설문은 구독 데이터", "source": "https://www.aaii.com/sentimentsurvey"},
     }

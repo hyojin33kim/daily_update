@@ -7,7 +7,8 @@
 - 매일 아침 직전 거래일 공개 시장 데이터 수집
 - KOSPI·S&P 500·VIX: Yahoo Finance 공개 차트 데이터
 - Fear & Greed: CNN 공식 지표
-- 검증 가능한 최신 무료 자료가 없는 항목은 `N/A` 표시
+- Equity Put/Call Ratio: Cboe 날짜별 Daily Market Statistics
+- VIX와 Put/Call 차트는 최근 거래일별 시계열 표시
 - GitHub Pages 자동 배포
 
 ## 주요 지표
