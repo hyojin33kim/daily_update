@@ -1,0 +1,4 @@
+codex_*.md
+__pycache__/
+*.py[cod]
+
